@@ -1,4 +1,6 @@
 use super::error;
+use bottlerocket_scalar::traits::{Scalar as _, Validate};
+use bottlerocket_scalar::ValidationError;
 use bottlerocket_scalar_derive::Scalar;
 use bottlerocket_string_impls_for::string_impls_for;
 use bounded_integer::BoundedI32;
@@ -1442,6 +1444,78 @@ mod test_kubernetes_memory_manager_policy {
     fn bad_policy_key() {
         for err in &["", "dynamic", &"a".repeat(64)] {
             KubernetesMemoryManagerPolicy::try_from(*err).unwrap_err();
+        }
+    }
+}
+
+/// KubernetesMemoryReservationPolicy represents how kubelet applies cgroup v2 memory protection.
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, Scalar)]
+pub enum KubernetesMemoryReservationPolicy {
+    #[serde(alias = "none")]
+    None,
+    #[serde(alias = "tiered-reservation")]
+    TieredReservation,
+}
+
+#[cfg(test)]
+mod test_kubernetes_memory_reservation_policy {
+    use super::KubernetesMemoryReservationPolicy;
+    use std::convert::TryFrom;
+
+    #[test]
+    fn good_policy() {
+        for ok in &["None", "none", "TieredReservation", "tiered-reservation"] {
+            KubernetesMemoryReservationPolicy::try_from(*ok).unwrap();
+        }
+    }
+
+    #[test]
+    fn bad_policy() {
+        for err in &["", "static", "tiered", &"a".repeat(64)] {
+            KubernetesMemoryReservationPolicy::try_from(*err).unwrap_err();
+        }
+    }
+}
+
+/// KubernetesMemoryThrottlingFactor controls where kubelet places memory.high relative to a
+/// container's memory limit or node allocatable memory.
+#[derive(Debug, Copy, Clone, PartialEq, Scalar)]
+pub struct KubernetesMemoryThrottlingFactor {
+    inner: f64,
+}
+
+impl Validate for KubernetesMemoryThrottlingFactor {
+    fn validate<T>(input: T) -> Result<Self, ValidationError>
+    where
+        T: Into<<Self as bottlerocket_scalar::traits::Scalar>::Inner>,
+    {
+        let input = input.into();
+        if input.is_finite() && input > 0.0 && input <= 1.0 {
+            Ok(Self { inner: input })
+        } else {
+            Err(ValidationError::new(
+                "memory throttling factor must be greater than 0 and less than or equal to 1",
+            ))
+        }
+    }
+}
+
+#[cfg(test)]
+mod test_kubernetes_memory_throttling_factor {
+    use super::KubernetesMemoryThrottlingFactor;
+    use std::convert::TryFrom;
+
+    #[test]
+    fn good_factor() {
+        for ok in [0.0001, 0.8, 1.0] {
+            assert_eq!(KubernetesMemoryThrottlingFactor::try_from(ok).unwrap(), ok);
+        }
+    }
+
+    #[test]
+    fn bad_factor() {
+        for err in [f64::NEG_INFINITY, -0.1, 0.0, 1.1, f64::INFINITY, f64::NAN] {
+            KubernetesMemoryThrottlingFactor::try_from(err).unwrap_err();
         }
     }
 }

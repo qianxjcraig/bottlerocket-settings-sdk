@@ -6,11 +6,11 @@ use bottlerocket_modeled_types::{
     KubernetesCloudProvider, KubernetesClusterDnsIp, KubernetesClusterName,
     KubernetesDurationValue, KubernetesEvictionKey, KubernetesHostnameOverrideSource,
     KubernetesIdsPerPodValue, KubernetesLabelKey, KubernetesLabelValue,
-    KubernetesMemoryManagerPolicy, KubernetesMemoryReservation, KubernetesMemorySwapBehavior,
-    KubernetesQuantityValue, KubernetesReservedResourceKey, KubernetesTaintValue,
-    KubernetesThresholdValue, KubernetesTopologyManagerPolicyOptions, NonNegativeInteger,
-    SingleLineString, TopologyManagerPolicy, TopologyManagerScope, Url, ValidBase64,
-    ValidLinuxHostname,
+    KubernetesMemoryManagerPolicy, KubernetesMemoryReservation, KubernetesMemoryReservationPolicy,
+    KubernetesMemorySwapBehavior, KubernetesMemoryThrottlingFactor, KubernetesQuantityValue,
+    KubernetesReservedResourceKey, KubernetesTaintValue, KubernetesThresholdValue,
+    KubernetesTopologyManagerPolicyOptions, NonNegativeInteger, SingleLineString,
+    TopologyManagerPolicy, TopologyManagerScope, Url, ValidBase64, ValidLinuxHostname,
 };
 use bottlerocket_settings_sdk::{GenerateResult, SettingsModel};
 
@@ -87,6 +87,8 @@ pub struct KubernetesSettingsV1 {
     shutdown_grace_period_for_critical_pods: KubernetesDurationValue,
     memory_manager_reserved_memory: HashMap<Identifier, KubernetesMemoryReservation>,
     memory_manager_policy: KubernetesMemoryManagerPolicy,
+    memory_reservation_policy: KubernetesMemoryReservationPolicy,
+    memory_throttling_factor: KubernetesMemoryThrottlingFactor,
     reserved_cpus: KernelCpuSetValue,
     memory_swap_behavior: KubernetesMemorySwapBehavior,
     hostname_override_source: KubernetesHostnameOverrideSource,
@@ -196,6 +198,8 @@ mod test {
                 shutdown_grace_period_for_critical_pods: None,
                 memory_manager_reserved_memory: None,
                 memory_manager_policy: None,
+                memory_reservation_policy: None,
+                memory_throttling_factor: None,
                 reserved_cpus: None,
                 memory_swap_behavior: None,
                 max_pods: None,
@@ -255,5 +259,55 @@ mod test {
             with.container_runtime_endpoint,
             Some("unix:///run/containerd/containerd.sock".try_into().unwrap())
         );
+    }
+
+    #[test]
+    fn test_serde_memory_qos() {
+        let without: KubernetesSettingsV1 =
+            serde_json::from_str(r#"{"cluster-name": "my-cluster"}"#).unwrap();
+        assert!(without.memory_reservation_policy.is_none());
+        assert!(without.memory_throttling_factor.is_none());
+
+        let with: KubernetesSettingsV1 = serde_json::from_str(
+            r#"{
+                "memory-reservation-policy": "TieredReservation",
+                "memory-throttling-factor": 0.8
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            with.memory_reservation_policy,
+            Some(KubernetesMemoryReservationPolicy::TieredReservation)
+        );
+        assert_eq!(
+            with.memory_throttling_factor,
+            Some(KubernetesMemoryThrottlingFactor::try_from(0.8).unwrap())
+        );
+
+        let serialized = serde_json::to_value(with).unwrap();
+        assert_eq!(
+            serialized
+                .get("memory-reservation-policy")
+                .and_then(serde_json::Value::as_str),
+            Some("TieredReservation")
+        );
+        assert_eq!(
+            serialized
+                .get("memory-throttling-factor")
+                .and_then(serde_json::Value::as_f64),
+            Some(0.8)
+        );
+    }
+
+    #[test]
+    fn test_serde_memory_qos_rejects_invalid_values() {
+        for invalid in [
+            r#"{"memory-reservation-policy": "Static"}"#,
+            r#"{"memory-throttling-factor": 0}"#,
+            r#"{"memory-throttling-factor": 1.1}"#,
+            r#"{"memory-throttling-factor": "0.8"}"#,
+        ] {
+            assert!(serde_json::from_str::<KubernetesSettingsV1>(invalid).is_err());
+        }
     }
 }
