@@ -19,6 +19,7 @@ members = [
 
     # Settings extensions
     # These will eventually live in the kit workspaces that own the related software
+    "bottlerocket-settings-models/settings-extensions/accelerators",
     "bottlerocket-settings-models/settings-extensions/autoscaling",
     "bottlerocket-settings-models/settings-extensions/aws",
     "bottlerocket-settings-models/settings-extensions/bootstrap-commands",
@@ -66,6 +67,7 @@ bottlerocket-scalar-derive = { path = "./bottlerocket-settings-models/scalar-der
 bottlerocket-string-impls-for = { path = "./bottlerocket-settings-models/string-impls-for", version = "0.1" }
 
 ## Settings Extensions
+settings-extension-accelerators = { path = "./bottlerocket-settings-models/settings-extensions/accelerators", version = "0.1" }
 settings-extension-autoscaling = { path = "./bottlerocket-settings-models/settings-extensions/autoscaling", version = "0.1" }
 settings-extension-aws = { path = "./bottlerocket-settings-models/settings-extensions/aws", version = "0.1" }
 settings-extension-bootstrap-commands = { path = "./bottlerocket-settings-models/settings-extensions/bootstrap-commands", version = "0.1" }

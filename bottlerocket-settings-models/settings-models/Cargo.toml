@@ -22,6 +22,7 @@ serde_json.workspace = true
 toml.workspace = true
 
 # settings extensions
+settings-extension-accelerators.workspace = true
 settings-extension-autoscaling.workspace = true
 settings-extension-aws.workspace = true
 settings-extension-bootstrap-commands.workspace = true

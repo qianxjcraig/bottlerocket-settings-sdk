@@ -1,0 +1,17 @@
+[package]
+name = "settings-extension-accelerators"
+version = "0.1.0"
+authors = ["Qian Xu <qianxj@amazon.com>"]
+license = "Apache-2.0 OR MIT"
+edition = "2021"
+publish = false
+
+[dependencies]
+bottlerocket-model-derive.workspace = true
+bottlerocket-settings-sdk.workspace = true
+env_logger.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+
+[lints]
+workspace = true
