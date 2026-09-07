@@ -79,7 +79,7 @@ string_impls_for!(NvidiaAcceleratorMigProfile, "NvidiaAcceleratorMigProfile");
 pub struct NvidiaAcceleratorMigProfiles(HashMap<NvidiaGpuModel, NvidiaAcceleratorMigProfile>);
 
 impl<'de> Deserialize<'de> for NvidiaAcceleratorMigProfiles {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
