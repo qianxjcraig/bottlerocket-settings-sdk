@@ -69,9 +69,53 @@ impl TryFrom<&str> for NvidiaAcceleratorMigProfile {
 
 string_impls_for!(NvidiaAcceleratorMigProfile, "NvidiaAcceleratorMigProfile");
 
+/// Model-keyed MIG profiles validated while the settings plugin deserializes API input.
+///
+/// Runtime API writes load the settings plugin for type deserialization, but do not invoke the
+/// settings extension's cross-field validation hook. Keeping the compatibility check in this
+/// modeled map prevents an incompatible model/profile pair from being committed.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct NvidiaAcceleratorMigProfiles(HashMap<NvidiaGpuModel, NvidiaAcceleratorMigProfile>);
+
+impl<'de> Deserialize<'de> for NvidiaAcceleratorMigProfiles {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let profiles =
+            HashMap::<NvidiaGpuModel, NvidiaAcceleratorMigProfile>::deserialize(deserializer)?;
+        for (model, profile) in &profiles {
+            if !is_approved_profile(model.as_ref(), profile.as_ref()) {
+                return Err(serde::de::Error::custom(format!(
+                    "NVIDIA MIG profile '{}' is not approved for GPU model '{}'",
+                    profile, model
+                )));
+            }
+        }
+        Ok(Self(profiles))
+    }
+}
+
+impl NvidiaAcceleratorMigProfiles {
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl IntoIterator for NvidiaAcceleratorMigProfiles {
+    type Item = (NvidiaGpuModel, NvidiaAcceleratorMigProfile);
+    type IntoIter =
+        std::collections::hash_map::IntoIter<NvidiaGpuModel, NvidiaAcceleratorMigProfile>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 #[model(impl_default = true)]
 pub struct NvidiaAcceleratorMigSettings {
-    profile: HashMap<NvidiaGpuModel, NvidiaAcceleratorMigProfile>,
+    profile: NvidiaAcceleratorMigProfiles,
 }
 
 #[model(impl_default = true)]
@@ -262,10 +306,28 @@ mod tests {
     }
 
     #[test]
-    fn rejects_profile_incompatible_with_known_model() {
+    fn deserialization_rejects_profile_incompatible_with_known_model() {
         let json = r#"{"nvidia":{"mode":"dra-shared-inference","mig":{"profile":{"a100.40gb":"1g.18gb"}}}}"#;
-        let settings: AcceleratorsSettingsV1 = serde_json::from_str(json).unwrap();
+        let error = serde_json::from_str::<AcceleratorsSettingsV1>(json).unwrap_err();
 
+        assert!(error
+            .to_string()
+            .contains("NVIDIA MIG profile '1g.18gb' is not approved for GPU model 'a100.40gb'"));
+    }
+
+    #[test]
+    fn validation_rejects_profile_incompatible_with_known_model() {
+        let settings = AcceleratorsSettingsV1 {
+            nvidia: Some(NvidiaAcceleratorSettings {
+                mode: Some(NvidiaAcceleratorMode::DraSharedInference),
+                mig: Some(NvidiaAcceleratorMigSettings {
+                    profile: Some(NvidiaAcceleratorMigProfiles(HashMap::from([(
+                        serde_json::from_str(r#""a100.40gb""#).unwrap(),
+                        NvidiaAcceleratorMigProfile::try_from("1g.18gb").unwrap(),
+                    )]))),
+                }),
+            }),
+        };
         assert_eq!(
             AcceleratorsSettingsV1::validate(settings, None),
             Err(AcceleratorValidationError::UnsupportedMigProfileForModel {
@@ -278,15 +340,11 @@ mod tests {
     #[test]
     fn rejects_unrecognized_gpu_model_for_accelerator_lifecycle() {
         let json = r#"{"nvidia":{"mode":"dra-shared-inference","mig":{"profile":{"future9000.192gb":"1g.24gb"}}}}"#;
-        let settings: AcceleratorsSettingsV1 = serde_json::from_str(json).unwrap();
+        let error = serde_json::from_str::<AcceleratorsSettingsV1>(json).unwrap_err();
 
-        assert_eq!(
-            AcceleratorsSettingsV1::validate(settings, None),
-            Err(AcceleratorValidationError::UnsupportedMigProfileForModel {
-                model: "future9000.192gb".to_string(),
-                profile: "1g.24gb".to_string(),
-            })
-        );
+        assert!(error.to_string().contains(
+            "NVIDIA MIG profile '1g.24gb' is not approved for GPU model 'future9000.192gb'"
+        ));
     }
 
     #[test]
