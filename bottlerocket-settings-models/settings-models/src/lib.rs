@@ -26,7 +26,9 @@ pub use bottlerocket_string_impls_for as string_impls_for;
 // Expose common settings structs
 pub use crate::boot::BootSettingsV1;
 pub use settings_extension_accelerators::{
-    self, AcceleratorsSettingsV1, NvidiaAcceleratorMode, NvidiaAcceleratorSettings,
+    self, AcceleratorValidationError, AcceleratorsSettingsV1, NvidiaAcceleratorMigProfile,
+    NvidiaAcceleratorMigProfileError, NvidiaAcceleratorMigSettings, NvidiaAcceleratorMode,
+    NvidiaAcceleratorSettings,
 };
 pub use settings_extension_autoscaling::{self, AutoScalingSettingsV1};
 pub use settings_extension_aws::{self, AwsSettingsV1};

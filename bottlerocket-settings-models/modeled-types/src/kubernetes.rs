@@ -1786,7 +1786,7 @@ pub struct NvidiaGpuModel {
 }
 
 lazy_static! {
-    pub(crate) static ref NVIDIAGPU_NAME: Regex = Regex::new(r"^([a-z0-9]+).(\d+)gb$").unwrap();
+    pub(crate) static ref NVIDIAGPU_NAME: Regex = Regex::new(r"^([a-z0-9]+)\.(\d+)gb$").unwrap();
 }
 
 impl TryFrom<&str> for NvidiaGpuModel {
@@ -1895,6 +1895,7 @@ mod test_nvidia_device_plugins {
         assert!(NvidiaGpuModel::try_from("1000").is_err());
         assert!(NvidiaGpuModel::try_from("A100.40GB").is_err());
         assert!(NvidiaGpuModel::try_from("a100.40").is_err());
+        assert!(NvidiaGpuModel::try_from("a100x40gb").is_err());
     }
 
     #[test]
