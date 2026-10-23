@@ -71,6 +71,11 @@ pub mod error {
         InvalidHugepageSize { input: String, msg: String },
 
         #[snafu(display(
+            "Invalid memory.min value '{input}': expected unsigned integer bytes with optional Ki, Mi, or Gi suffix, at most 9223372036854775807 bytes (u64::MAX / 2)"
+        ))]
+        InvalidKubeReservedMemoryMin { input: String },
+
+        #[snafu(display(
             "Invalid hugepages allocation '{}'. Must be either a non-negative \
             integer or a comma separated list of \"<node>:<pages>\" pairs (e.g. \"0:128,1:256\")",
             input
@@ -274,6 +279,7 @@ mod drivers;
 mod ecs;
 mod hugepages;
 mod kubernetes;
+mod memory_min;
 mod oci_defaults;
 mod shared;
 
@@ -281,5 +287,6 @@ pub use drivers::*;
 pub use ecs::*;
 pub use hugepages::*;
 pub use kubernetes::*;
+pub use memory_min::*;
 pub use oci_defaults::*;
 pub use shared::*;

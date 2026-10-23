@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Added optional `settings.kubernetes.kube-reserved-memory-min.kubelet` and `.containerd` values for service reclaim protection (unsigned integer bytes with optional Ki/Mi/Gi suffix; zero disables protection; each value is at most u64::MAX/2 so their parent sum is representable).
+
 - See [unreleased changes here]
 
 [unreleased changes here]: https://github.com/bottlerocket-os/bottlerocket-settings-sdk/compare/bottlerocket-settings-models-v0.31.0...HEAD
