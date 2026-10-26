@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added `settings.kernel.zram.size` to configure zram swap capacity at boot using
-  integer bytes (`Ki`, `Mi`, `Gi`) or a percentage of total memory. Nonzero
-  absolute sizes must be at least 1 MiB. Changes take effect after reboot.
+- Added `settings.kernel.zram.size` to configure zram swap capacity using
+  integer bytes (`Ki`, `Mi`, `Gi`, `Ti`) or a percentage of total memory. Nonzero
+  absolute sizes must be at least 1 MiB.
 
 - See [unreleased changes here]
 

@@ -68,7 +68,7 @@ pub mod error {
         InvalidVersion { input: String },
 
         #[snafu(display(
-            "Invalid zram size '{input}': use zero, integer bytes (Ki/Mi/Gi) of at least 1Mi, or 0..100%"
+            "Invalid zram size '{input}': use zero, integer bytes (Ki/Mi/Gi/Ti) of at least 1Mi, or 0..100%"
         ))]
         InvalidZramSize { input: String },
 

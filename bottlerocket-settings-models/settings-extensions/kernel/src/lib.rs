@@ -16,7 +16,6 @@ struct KernelSettingsV1 {
     sysctl: HashMap<SysctlKey, String>,
     hugepages: HugepagesSettings,
     drivers: DriversSettings,
-    // Applied at boot on variants with release-swap; changes require a reboot.
     zram: ZramSettings,
 }
 
@@ -219,7 +218,7 @@ mod test {
 
     #[test]
     fn test_zram_setting() {
-        for size in ["0", "0%", "512Mi", "2Gi", "25%"] {
+        for size in ["0", "0%", "512Mi", "2Gi", "1Ti", "25%"] {
             let value = serde_json::json!({"zram": {"size": size}});
             let model: KernelSettingsV1 = serde_json::from_value(value.clone()).unwrap();
             assert_eq!(serde_json::to_value(model).unwrap()["zram"], value["zram"]);
@@ -228,7 +227,7 @@ mod test {
             serde_json::json!({"size": 25}),
             serde_json::json!({"size": "101%"}),
             serde_json::json!({"size": "-1Gi"}),
-            serde_json::json!({"size": "1Ti"}),
+            serde_json::json!({"size": "01Gi"}),
             serde_json::json!({"size": "1048575"}),
             serde_json::json!({"size": "1023Ki"}),
             serde_json::json!({"typo": "1Gi"}),

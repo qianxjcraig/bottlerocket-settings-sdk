@@ -1,9 +1,10 @@
 use crate::error;
+use crate::iec::parse_iec_quantity;
 use bottlerocket_string_impls_for::string_impls_for;
 use serde::{Deserialize, Serialize};
+use snafu::ensure;
 
 /// Zram configuration. Only variants that include zram swap apply these settings.
-/// Changing the size takes effect after reboot, never by resizing live swap.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ZramSettings {
@@ -11,54 +12,40 @@ pub struct ZramSettings {
     pub size: Option<ZramSize>,
 }
 
-/// A non-negative integer byte quantity (e.g. `512Mi`, `2Gi`) or an integer
-/// percentage of MemTotal (`0%` through `100%`). Bare integers represent bytes.
-/// Supported suffixes are Ki/Mi/Gi; fractional quantities,
-/// signs, exponents and whitespace are not accepted. Zero disables zram swap.
-/// Nonzero absolute sizes must be at least 1 MiB. Percentages are checked at boot.
-/// At boot, sizes are rounded down to a page boundary and must fit a swap header.
+/// A non-negative integer byte quantity with an optional IEC binary unit
+/// (Ki, Mi, Gi, Ti; e.g. `512Mi`, `2Gi`), or an integer percentage (`0%` through `100%`).
+/// Signs, fractions, exponents, whitespace and leading zeros are not accepted.
+/// Zero disables zram swap. Nonzero byte quantities must be at least 1 MiB.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct ZramSize {
     inner: String,
-    value: Size,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 enum Size {
     Bytes(u64),
     Percent(u8),
 }
 
 impl ZramSize {
-    /// Resolve percentages against the supplied MemTotal in bytes, rounding down.
-    /// Page alignment is left to the caller, which knows the running kernel.
-    pub fn as_bytes(&self, mem_total_bytes: u64) -> u64 {
-        match self.value {
+    /// Size in bytes. Percentages resolve against `total_bytes`, rounding down.
+    pub fn as_bytes(&self, total_bytes: u64) -> u64 {
+        // TryFrom and deserialization validate the immutable string.
+        match Self::parse(&self.inner).expect("validated ZramSize") {
             Size::Bytes(bytes) => bytes,
-            Size::Percent(percent) => ((mem_total_bytes as u128 * percent as u128) / 100) as u64,
+            Size::Percent(percent) => ((total_bytes as u128 * percent as u128) / 100) as u64,
         }
     }
-}
 
-fn parse(input: &str) -> Option<Size> {
-    let digits = input.bytes().take_while(u8::is_ascii_digit).count();
-    if digits == 0 {
-        return None;
+    fn parse(input: &str) -> Option<Size> {
+        if let Some(number) = input.strip_suffix('%') {
+            let percent = parse_iec_quantity(number)
+                .filter(|quantity| !quantity.has_unit)?
+                .bytes;
+            return (percent <= 100).then_some(Size::Percent(percent as u8));
+        }
+        let bytes = parse_iec_quantity(input)?.bytes;
+        (bytes == 0 || bytes >= 1 << 20).then_some(Size::Bytes(bytes))
     }
-    let number: u64 = input[..digits].parse().ok()?;
-    let suffix = &input[digits..];
-    if suffix == "%" {
-        return (number <= 100).then_some(Size::Percent(number as u8));
-    }
-    let multiplier: u64 = match suffix {
-        "" => 1,
-        "Ki" => 1 << 10,
-        "Mi" => 1 << 20,
-        "Gi" => 1 << 30,
-        _ => return None,
-    };
-    let bytes = number.checked_mul(multiplier)?;
-    (bytes == 0 || bytes >= 1 << 20).then_some(Size::Bytes(bytes))
 }
 
 impl TryFrom<&str> for ZramSize {
@@ -66,12 +53,12 @@ impl TryFrom<&str> for ZramSize {
 
     fn try_from(input: &str) -> Result<Self, Self::Error> {
         crate::reject_control_chars(input, "ZramSize")?;
-        let value = parse(input).ok_or_else(|| error::Error::InvalidZramSize {
-            input: input.to_owned(),
-        })?;
+        ensure!(
+            Self::parse(input).is_some(),
+            error::InvalidZramSizeSnafu { input }
+        );
         Ok(Self {
             inner: input.to_owned(),
-            value,
         })
     }
 }
@@ -93,6 +80,8 @@ mod test_zram_size {
             ("1024Ki", 1 << 20),
             ("1Mi", 1 << 20),
             ("1024Gi", 1 << 40),
+            ("0Ti", 0),
+            ("1Ti", 1 << 40),
             ("1048576", 1048576),
             ("18446744073709551615", u64::MAX),
         ] {
@@ -107,12 +96,12 @@ mod test_zram_size {
     #[test]
     fn rejects_absolute_sizes_below_one_mib_and_unsupported_suffixes() {
         for bad in [
-            "1", "655360", "1048575", "1Ki", "1023Ki", "1Ti", "1Pi", "1Ei", "2000k", "128M", "1G",
-            "1T", "1P", "1E", "0Ti", "0M",
+            "1", "655360", "1048575", "1Ki", "1023Ki", "1Pi", "1Ei", "2000k", "128M", "1G", "1T",
+            "1P", "1E", "0Pi", "0M",
         ] {
             assert!(ZramSize::try_from(bad).is_err(), "{bad}");
         }
-        // Percentages are validated against the running node's memory at boot.
+        // Percentages have no minimum, since the result depends on the total they resolve against.
         assert_eq!(ZramSize::try_from("1%").unwrap().as_bytes(100), 1);
     }
 
@@ -149,6 +138,13 @@ mod test_zram_size {
             "18446744073709551616",
             "16Ei",
             "18446744073709551615Gi",
+            "16777216Ti",
+            "00",
+            "01Gi",
+            "0512Mi",
+            "05%",
+            "00%",
+            "1Gi%",
             "1Gi\"; reboot",
             "１Gi",
         ] {
