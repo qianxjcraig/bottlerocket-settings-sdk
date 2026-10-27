@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Added `settings.kernel.zram.size` to configure zram swap capacity using
+  integer bytes (`Ki`, `Mi`, `Gi`, `Ti`) or a percentage of total memory. Nonzero
+  absolute sizes must be at least 1 MiB.
+
 - See [unreleased changes here]
 
 [unreleased changes here]: https://github.com/bottlerocket-os/bottlerocket-settings-sdk/compare/bottlerocket-settings-models-v0.31.0...HEAD
