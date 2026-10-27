@@ -14,25 +14,26 @@ const UNITS: [(&str, u64); 4] = [
     ("Ti", 1 << 40),
 ];
 
-/// Parses an unsigned integer with an optional IEC binary unit (Ki, Mi, Gi, Ti).
-/// Signs, fractions, exponents, whitespace and leading zeros are rejected; `0`
-/// itself is allowed. Returns `None` if the input is malformed or overflows u64.
+/// Parses an unsigned decimal integer. Signs, fractions, exponents, whitespace
+/// and leading zeros are rejected; `0` itself is allowed. Returns `None` if the
+/// input is malformed or overflows u64.
+pub(crate) fn parse_decimal(digits: &str) -> Option<u64> {
+    // u64::from_str accepts a leading '+', so check the digits first.
+    let well_formed = !digits.is_empty()
+        && digits.bytes().all(|b| b.is_ascii_digit())
+        && (digits == "0" || !digits.starts_with('0'));
+    well_formed.then(|| digits.parse().ok()).flatten()
+}
+
+/// Parses an unsigned decimal integer (see [`parse_decimal`]) with an optional IEC
+/// binary unit (Ki, Mi, Gi, Ti). Returns `None` if the input is malformed or the
+/// byte count overflows u64.
 pub(crate) fn parse_iec_quantity(input: &str) -> Option<IecQuantity> {
     let (digits, multiplier) = UNITS
         .into_iter()
         .find_map(|(unit, multiplier)| input.strip_suffix(unit).map(|d| (d, Some(multiplier))))
         .unwrap_or((input, None));
-    // u64::from_str accepts a leading '+', so check the digits first.
-    let well_formed = !digits.is_empty()
-        && digits.bytes().all(|b| b.is_ascii_digit())
-        && (digits == "0" || !digits.starts_with('0'));
-    if !well_formed {
-        return None;
-    }
-    let bytes = digits
-        .parse::<u64>()
-        .ok()?
-        .checked_mul(multiplier.unwrap_or(1))?;
+    let bytes = parse_decimal(digits)?.checked_mul(multiplier.unwrap_or(1))?;
     Some(IecQuantity {
         bytes,
         has_unit: multiplier.is_some(),
@@ -41,7 +42,33 @@ pub(crate) fn parse_iec_quantity(input: &str) -> Option<IecQuantity> {
 
 #[cfg(test)]
 mod test_parse_iec_quantity {
-    use super::parse_iec_quantity;
+    use super::{parse_decimal, parse_iec_quantity};
+
+    #[test]
+    fn decimal() {
+        for (input, value) in [
+            ("0", 0),
+            ("7", 7),
+            ("100", 100),
+            ("18446744073709551615", u64::MAX),
+        ] {
+            assert_eq!(parse_decimal(input), Some(value), "{input}");
+        }
+        for input in [
+            "",
+            "00",
+            "07",
+            "+7",
+            "-7",
+            "7.0",
+            " 7",
+            "7Ki",
+            "１",
+            "18446744073709551616",
+        ] {
+            assert_eq!(parse_decimal(input), None, "{input:?}");
+        }
+    }
 
     #[test]
     fn valid() {

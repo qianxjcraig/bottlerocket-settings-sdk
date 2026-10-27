@@ -1,5 +1,5 @@
 use crate::error;
-use crate::iec::parse_iec_quantity;
+use crate::iec::{parse_decimal, parse_iec_quantity};
 use bottlerocket_string_impls_for::string_impls_for;
 use serde::{Deserialize, Serialize};
 use snafu::ensure;
@@ -21,6 +21,10 @@ pub struct ZramSize {
     inner: String,
 }
 
+/// The smallest nonzero byte quantity. A swap area needs at least 10 pages, which is
+/// 640 KiB with 64 KiB pages, so 1 MiB fits on every supported page size.
+const MIN_BYTES: u64 = 1 << 20;
+
 enum Size {
     Bytes(u64),
     Percent(u8),
@@ -32,19 +36,22 @@ impl ZramSize {
         // TryFrom and deserialization validate the immutable string.
         match Self::parse(&self.inner).expect("validated ZramSize") {
             Size::Bytes(bytes) => bytes,
-            Size::Percent(percent) => ((total_bytes as u128 * percent as u128) / 100) as u64,
+            Size::Percent(percent) => {
+                u64::try_from(u128::from(total_bytes) * u128::from(percent) / 100)
+                    .expect("a percentage of at most 100 is at most total_bytes")
+            }
         }
     }
 
     fn parse(input: &str) -> Option<Size> {
         if let Some(number) = input.strip_suffix('%') {
-            let percent = parse_iec_quantity(number)
-                .filter(|quantity| !quantity.has_unit)?
-                .bytes;
-            return (percent <= 100).then_some(Size::Percent(percent as u8));
+            let percent = u8::try_from(parse_decimal(number)?)
+                .ok()
+                .filter(|percent| *percent <= 100)?;
+            return Some(Size::Percent(percent));
         }
         let bytes = parse_iec_quantity(input)?.bytes;
-        (bytes == 0 || bytes >= 1 << 20).then_some(Size::Bytes(bytes))
+        (bytes == 0 || bytes >= MIN_BYTES).then_some(Size::Bytes(bytes))
     }
 }
 
