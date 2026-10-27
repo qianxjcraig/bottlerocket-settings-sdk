@@ -74,91 +74,95 @@ string_impls_for!(ZramSize, "ZramSize");
 #[cfg(test)]
 mod test_zram_size {
     use super::*;
+    use test_case::test_case;
 
-    #[test]
-    fn absolute_sizes_and_round_trip() {
-        for (input, bytes) in [
-            ("0", 0),
-            ("0Ki", 0),
-            ("0Mi", 0),
-            ("0Gi", 0),
-            ("512Mi", 512 << 20),
-            ("2Gi", 2 << 30),
-            ("1024Ki", 1 << 20),
-            ("1Mi", 1 << 20),
-            ("1024Gi", 1 << 40),
-            ("0Ti", 0),
-            ("1Ti", 1 << 40),
-            ("1048576", 1048576),
-            ("18446744073709551615", u64::MAX),
-        ] {
-            let size = ZramSize::try_from(input).unwrap();
-            assert_eq!(size.as_bytes(123), bytes, "{input}");
-            let json = serde_json::to_string(&size).unwrap();
-            assert_eq!(json, format!("\"{input}\""));
-            assert_eq!(serde_json::from_str::<ZramSize>(&json).unwrap(), size);
-        }
+    #[test_case("0", 0; "zero")]
+    #[test_case("0Ki", 0; "zero kibibytes")]
+    #[test_case("0Mi", 0; "zero mebibytes")]
+    #[test_case("0Gi", 0; "zero gibibytes")]
+    #[test_case("0Ti", 0; "zero tebibytes")]
+    #[test_case("512Mi", 512 << 20; "mebibytes")]
+    #[test_case("2Gi", 2 << 30; "gibibytes")]
+    #[test_case("1Ti", 1 << 40; "tebibytes")]
+    #[test_case("1Mi", 1 << 20; "minimum")]
+    #[test_case("1024Ki", 1 << 20; "minimum in kibibytes")]
+    #[test_case("1024Gi", 1 << 40; "tebibyte in gibibytes")]
+    #[test_case("1048576", 1 << 20; "bare bytes")]
+    #[test_case("18446744073709551615", u64::MAX; "u64 max")]
+    fn absolute_sizes_and_round_trip(input: &str, bytes: u64) {
+        let size = ZramSize::try_from(input).unwrap();
+        assert_eq!(size.as_bytes(123), bytes);
+        let json = serde_json::to_string(&size).unwrap();
+        assert_eq!(json, format!("\"{input}\""));
+        assert_eq!(serde_json::from_str::<ZramSize>(&json).unwrap(), size);
     }
 
-    #[test]
-    fn rejects_absolute_sizes_below_one_mib_and_unsupported_suffixes() {
-        for bad in [
-            "1", "655360", "1048575", "1Ki", "1023Ki", "1Pi", "1Ei", "2000k", "128M", "1G", "1T",
-            "1P", "1E", "0Pi", "0M",
-        ] {
-            assert!(ZramSize::try_from(bad).is_err(), "{bad}");
-        }
-        // Percentages have no minimum, since the result depends on the total they resolve against.
-        assert_eq!(ZramSize::try_from("1%").unwrap().as_bytes(100), 1);
+    #[test_case("0%", 4099, 0; "zero")]
+    #[test_case("25%", 4099, 1024; "rounds down")]
+    #[test_case("100%", 4099, 4099; "all")]
+    #[test_case("100%", u64::MAX, u64::MAX; "no overflow")]
+    #[test_case("1%", 100, 1; "no minimum")]
+    fn percentages(input: &str, total_bytes: u64, bytes: u64) {
+        let size = ZramSize::try_from(input).unwrap();
+        assert_eq!(size.as_bytes(total_bytes), bytes);
     }
 
-    #[test]
-    fn percentages_and_overflow() {
-        for (input, expected) in [("0%", 0), ("25%", 1024), ("100%", 4099)] {
-            assert_eq!(ZramSize::try_from(input).unwrap().as_bytes(4099), expected);
-        }
-        assert_eq!(
-            ZramSize::try_from("100%").unwrap().as_bytes(u64::MAX),
-            u64::MAX
-        );
+    #[test_case("1"; "one byte")]
+    #[test_case("655360"; "640 KiB")]
+    #[test_case("1048575"; "just below 1 MiB")]
+    #[test_case("1Ki"; "one kibibyte")]
+    #[test_case("1023Ki"; "just below 1 MiB in kibibytes")]
+    #[test_case("1Pi"; "pebibytes")]
+    #[test_case("1Ei"; "exbibytes")]
+    #[test_case("0Pi"; "zero pebibytes")]
+    #[test_case("2000k"; "SI k")]
+    #[test_case("128M"; "SI M")]
+    #[test_case("0M"; "zero SI M")]
+    #[test_case("1G"; "SI G")]
+    #[test_case("1T"; "SI T")]
+    #[test_case("1P"; "SI P")]
+    #[test_case("1E"; "SI E")]
+    fn rejects_absolute_sizes_below_one_mib_and_unsupported_suffixes(input: &str) {
+        assert!(ZramSize::try_from(input).is_err());
     }
 
-    #[test]
-    fn rejects_ambiguous_invalid_and_overflowing_sizes() {
-        for bad in [
-            "",
-            "-1",
-            "+1Gi",
-            "1.5Gi",
-            "1e9",
-            "100m",
-            " 1Gi",
-            "1Gi ",
-            "1Gi\n",
-            "101%",
-            "1.5%",
-            "%",
-            "NaN",
-            "1Gib",
-            "1GB",
-            "1mi",
-            "18446744073709551616",
-            "16Ei",
-            "18446744073709551615Gi",
-            "16777216Ti",
-            "00",
-            "01Gi",
-            "0512Mi",
-            "05%",
-            "00%",
-            "1Gi%",
-            "1Gi\"; reboot",
-            "１Gi",
-        ] {
-            assert!(ZramSize::try_from(bad).is_err(), "{bad:?}");
-        }
-        for bad in ["1", "true", "{}", "[]"] {
-            assert!(serde_json::from_str::<ZramSize>(bad).is_err(), "{bad}");
-        }
+    #[test_case(""; "empty")]
+    #[test_case("-1"; "negative")]
+    #[test_case("+1Gi"; "plus sign")]
+    #[test_case("1.5Gi"; "fraction")]
+    #[test_case("1e9"; "exponent")]
+    #[test_case("100m"; "lowercase SI m")]
+    #[test_case(" 1Gi"; "leading space")]
+    #[test_case("1Gi "; "trailing space")]
+    #[test_case("1Gi\n"; "trailing newline")]
+    #[test_case("101%"; "over 100 percent")]
+    #[test_case("1.5%"; "fractional percent")]
+    #[test_case("%"; "bare percent")]
+    #[test_case("NaN"; "nan")]
+    #[test_case("1Gib"; "trailing b")]
+    #[test_case("1GB"; "decimal GB")]
+    #[test_case("1mi"; "lowercase unit")]
+    #[test_case("18446744073709551616"; "u64 overflow")]
+    #[test_case("16Ei"; "exbibyte overflow")]
+    #[test_case("18446744073709551615Gi"; "gibibyte overflow")]
+    #[test_case("16777216Ti"; "tebibyte overflow")]
+    #[test_case("00"; "double zero")]
+    #[test_case("01Gi"; "leading zero")]
+    #[test_case("0512Mi"; "leading zero mebibytes")]
+    #[test_case("05%"; "leading zero percent")]
+    #[test_case("00%"; "double zero percent")]
+    #[test_case("1Gi%"; "unit with percent")]
+    #[test_case("1Gi\"; reboot"; "quote injection")]
+    #[test_case("１Gi"; "fullwidth digit")]
+    fn rejects_ambiguous_invalid_and_overflowing_sizes(input: &str) {
+        assert!(ZramSize::try_from(input).is_err());
+    }
+
+    #[test_case("1"; "number")]
+    #[test_case("true"; "bool")]
+    #[test_case("{}"; "object")]
+    #[test_case("[]"; "array")]
+    fn rejects_non_string_json(json: &str) {
+        assert!(serde_json::from_str::<ZramSize>(json).is_err());
     }
 }
